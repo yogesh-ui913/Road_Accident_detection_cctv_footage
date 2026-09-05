@@ -1,13 +1,12 @@
 import streamlit as st
 import tensorflow as tf
-from tensorflow.keras.preprocessing import image
 import numpy as np
 from PIL import Image
 
 
-# --------------------------------------------------
-# Page Configuration
-# --------------------------------------------------
+# ==================================================
+# PAGE CONFIGURATION
+# ==================================================
 
 st.set_page_config(
     page_title="Accident Detection from CCTV Footage",
@@ -16,31 +15,9 @@ st.set_page_config(
 )
 
 
-# --------------------------------------------------
-# Load Model
-# --------------------------------------------------
-
-@st.cache_resource
-def load_model():
-    return tf.keras.models.load_model(
-        "model_vgg16_aug_fine_tune.keras"
-    )
-
-
-model = load_model()
-
-
-# --------------------------------------------------
-# Image Size
-# --------------------------------------------------
-
-IMG_WIDTH = 224
-IMG_HEIGHT = 224
-
-
-# --------------------------------------------------
-# Title
-# --------------------------------------------------
+# ==================================================
+# TITLE
+# ==================================================
 
 st.title("🚗 Accident Detection from CCTV Footage")
 
@@ -50,63 +27,123 @@ st.write(
 )
 
 
-# --------------------------------------------------
-# Upload Image
-# --------------------------------------------------
+# ==================================================
+# LOAD MODEL
+# ==================================================
+
+@st.cache_resource
+def load_model():
+
+    try:
+
+        model = tf.keras.models.load_model(
+            "model_vgg16_aug_fine_tune.keras",
+            compile=False
+        )
+
+        return model
+
+    except Exception as e:
+
+        st.error("❌ Model could not be loaded.")
+
+        st.code(str(e))
+
+        st.info(
+            "Please check that model_vgg16_aug_fine_tune.keras "
+            "exists in the GitHub repository."
+        )
+
+        st.stop()
+
+
+model = load_model()
+
+
+# ==================================================
+# IMAGE SIZE
+# ==================================================
+
+IMG_WIDTH = 224
+IMG_HEIGHT = 224
+
+
+# ==================================================
+# UPLOAD IMAGE
+# ==================================================
 
 uploaded_file = st.file_uploader(
-    "Choose an image...",
+    "Choose a CCTV image...",
     type=["jpg", "jpeg", "png"]
 )
 
 
-# --------------------------------------------------
-# Prediction
-# --------------------------------------------------
+# ==================================================
+# PREDICTION
+# ==================================================
 
 if uploaded_file is not None:
 
-    # Open uploaded image
-    img = Image.open(uploaded_file).convert("RGB")
+    try:
 
-    # Display image
-    st.image(
-        img,
-        caption="Uploaded Image",
-        use_container_width=True
-    )
+        # ------------------------------------------
+        # Open image
+        # ------------------------------------------
 
-    # Space
-    st.write("")
+        img = Image.open(uploaded_file).convert("RGB")
 
-    # Predict button
-    if st.button("🔍 Detect Accident"):
 
-        with st.spinner("Analyzing image..."):
+        # ------------------------------------------
+        # Display image
+        # ------------------------------------------
 
-            try:
+        st.image(
+            img,
+            caption="Uploaded Image",
+            use_container_width=True
+        )
 
-                # ------------------------------------------
-                # Resize image
-                # ------------------------------------------
+
+        st.write("")
+
+
+        # ------------------------------------------
+        # Detect button
+        # ------------------------------------------
+
+        if st.button("🔍 Detect Accident"):
+
+            with st.spinner("Analyzing image..."):
+
+                # ----------------------------------
+                # Resize
+                # ----------------------------------
 
                 img_resized = img.resize(
                     (IMG_WIDTH, IMG_HEIGHT)
                 )
 
 
-                # ------------------------------------------
-                # Convert image to array
-                # ------------------------------------------
+                # ----------------------------------
+                # Convert to NumPy array
+                # ----------------------------------
 
-                img_array = image.img_to_array(
+                img_array = np.array(
                     img_resized
-                )
+                ).astype("float32")
 
 
-                # ------------------------------------------
+                # ----------------------------------
+                # Normalize
+                # Same as training
+                # ----------------------------------
+
+                img_array = img_array / 255.0
+
+
+                # ----------------------------------
                 # Add batch dimension
-                # ------------------------------------------
+                # ----------------------------------
 
                 img_array = np.expand_dims(
                     img_array,
@@ -114,16 +151,9 @@ if uploaded_file is not None:
                 )
 
 
-                # ------------------------------------------
-                # Normalize image
-                # ------------------------------------------
-
-                img_array = img_array / 255.0
-
-
-                # ------------------------------------------
+                # ----------------------------------
                 # Prediction
-                # ------------------------------------------
+                # ----------------------------------
 
                 prediction = model.predict(
                     img_array,
@@ -136,11 +166,19 @@ if uploaded_file is not None:
                 )
 
 
-                # ------------------------------------------
-                # Class Mapping
-                # ------------------------------------------
+                # ==================================
+                # CLASS MAPPING
+                # ==================================
+                #
                 # 0 = Accident
                 # 1 = Non Accident
+                #
+                # probability >= 0.5
+                #       -> Non Accident
+                #
+                # probability < 0.5
+                #       -> Accident
+                # ==================================
 
                 if probability >= 0.5:
 
@@ -155,9 +193,9 @@ if uploaded_file is not None:
                     confidence = 1 - probability
 
 
-                # ------------------------------------------
-                # Display Result
-                # ------------------------------------------
+                # ----------------------------------
+                # Display prediction
+                # ----------------------------------
 
                 st.subheader("Prediction")
 
@@ -179,23 +217,31 @@ if uploaded_file is not None:
                     f"**Prediction:** {predicted_class}"
                 )
 
+
                 st.info(
-                    f"**Confidence:** {confidence:.2%}"
+                    f"**Confidence:** "
+                    f"{confidence:.2%}"
                 )
 
 
-            except Exception as e:
-
-                st.error(
-                    "❌ Error while processing the image."
+                st.write(
+                    f"**Model Output:** "
+                    f"{probability:.4f}"
                 )
 
-                st.exception(e)
+
+    except Exception as e:
+
+        st.error(
+            "❌ Error while processing the image."
+        )
+
+        st.code(str(e))
 
 
-# --------------------------------------------------
-# Instructions
-# --------------------------------------------------
+# ==================================================
+# INSTRUCTIONS
+# ==================================================
 
 st.markdown("---")
 
