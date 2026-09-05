@@ -1,61 +1,45 @@
+%%writefile streamlit_app.py
 
 import streamlit as st
-import tensorflow as tf
-from tensorflow.keras.preprocessing import image
-import numpy as np
-from PIL import Image
+import requests
 
 
 # --------------------------------------------------
-# Page configuration
+# Page Configuration
 # --------------------------------------------------
 
 st.set_page_config(
-    page_title="Accident Detection",
-    page_icon="🚗"
+    page_title="Accident Detection from CCTV Footage",
+    page_icon="🚗",
+    layout="centered"
 )
-
-
-# --------------------------------------------------
-# Load trained VGG16 model
-# --------------------------------------------------
-
-@st.cache_resource
-def load_model():
-    return tf.keras.models.load_model(
-        "model_vgg16_aug_fine_tune.keras"
-    )
-
-
-model = load_model()
-
-
-# --------------------------------------------------
-# Image size used during training
-# --------------------------------------------------
-
-IMG_HEIGHT = 224
-IMG_WIDTH = 224
 
 
 # --------------------------------------------------
 # Title
 # --------------------------------------------------
 
-st.title("🚗 Accident Detection from CCTV Image")
+st.title("🚗 Accident Detection from CCTV Footage")
 
 st.write(
-    "Upload a CCTV image to detect whether it contains "
+    "Upload a CCTV image to predict whether it contains "
     "an Accident or Non Accident."
 )
 
 
 # --------------------------------------------------
-# Upload image
+# Flask API URL
+# --------------------------------------------------
+
+FLASK_API_URL = "http://127.0.0.1:5000/predict"
+
+
+# --------------------------------------------------
+# Upload Image
 # --------------------------------------------------
 
 uploaded_file = st.file_uploader(
-    "Choose an image",
+    "Choose an image...",
     type=["jpg", "jpeg", "png"]
 )
 
@@ -66,88 +50,170 @@ uploaded_file = st.file_uploader(
 
 if uploaded_file is not None:
 
-    # Open image
-    img = Image.open(uploaded_file).convert("RGB")
-
-    # Display image
+    # Display uploaded image
     st.image(
-        img,
+        uploaded_file,
         caption="Uploaded Image",
         use_container_width=True
     )
 
-    # --------------------------------------------------
-    # Preprocessing
-    # Same as notebook
-    # --------------------------------------------------
+    st.write("")
 
-    img = img.resize((IMG_WIDTH, IMG_HEIGHT))
-
-    img_array = image.img_to_array(img)
-
-    # Add batch dimension
-    img_array = np.expand_dims(img_array, axis=0)
-
-    # Training used rescale=1./255
-    img_array = img_array / 255.0
-
-    # --------------------------------------------------
-    # Prediction
-    # --------------------------------------------------
-
+    # Predict button
     if st.button("🔍 Detect Accident"):
 
         with st.spinner("Analyzing image..."):
 
-            prediction = model.predict(
-                img_array,
-                verbose=0
-            )
+            try:
 
-        probability = float(prediction[0][0])
+                # Reset file position
+                uploaded_file.seek(0)
 
-        # --------------------------------------------------
-        # IMPORTANT:
-        #
-        # 0 = Accident
-        # 1 = Non Accident
-        #
-        # probability >= 0.5 → Non Accident
-        # probability < 0.5  → Accident
-        # --------------------------------------------------
+                # Send image to Flask API
+                files = {
+                    "file": (
+                        uploaded_file.name,
+                        uploaded_file.getvalue(),
+                        uploaded_file.type
+                    )
+                }
 
-        if probability >= 0.5:
+                response = requests.post(
+                    FLASK_API_URL,
+                    files=files,
+                    timeout=60
+                )
 
-            predicted_class = "Non Accident"
-            confidence = probability
 
-        else:
+                # --------------------------------------------------
+                # Successful response
+                # --------------------------------------------------
 
-            predicted_class = "Accident"
-            confidence = 1 - probability
+                if response.status_code == 200:
 
-        # --------------------------------------------------
-        # Display result
-        # --------------------------------------------------
+                    prediction_data = response.json()
 
-        st.subheader("Prediction")
+                    predicted_class = prediction_data.get(
+                        "predicted_class",
+                        "Unknown"
+                    )
 
-        if predicted_class == "Accident":
+                    confidence = float(
+                        prediction_data.get(
+                            "confidence",
+                            0
+                        )
+                    )
 
-            st.error("🚨 Accident Detected")
 
-        else:
+                    st.subheader("Prediction")
 
-            st.success("✅ Non Accident")
 
-        st.write(
-            f"**Prediction:** {predicted_class}"
-        )
+                    # Accident
+                    if predicted_class.lower() == "accident":
 
-        st.write(
-            f"**Confidence:** {confidence:.2%}"
-        )
+                        st.error(
+                            f"🚨 Accident Detected"
+                        )
 
-        st.write(
-            f"**Raw model output:** {probability:.4f}"
-        )
+                    # Non Accident
+                    elif predicted_class.lower() == "non accident":
+
+                        st.success(
+                            f"✅ Non Accident"
+                        )
+
+                    # Unknown
+                    else:
+
+                        st.warning(
+                            f"Prediction: {predicted_class}"
+                        )
+
+
+                    # Confidence
+                    st.info(
+                        f"Confidence: {confidence:.2%}"
+                    )
+
+
+                # --------------------------------------------------
+                # API Error
+                # --------------------------------------------------
+
+                else:
+
+                    try:
+                        error_message = response.json().get(
+                            "error",
+                            "Unknown API error"
+                        )
+                    except Exception:
+                        error_message = response.text
+
+                    st.error(
+                        f"❌ API Error: {error_message}"
+                    )
+
+
+            # --------------------------------------------------
+            # Flask connection error
+            # --------------------------------------------------
+
+            except requests.exceptions.ConnectionError:
+
+                st.error(
+                    "❌ Could not connect to Flask API."
+                )
+
+                st.info(
+                    "Please start the Flask API first:"
+                )
+
+                st.code(
+                    "python app.py"
+                )
+
+
+            # --------------------------------------------------
+            # Timeout error
+            # --------------------------------------------------
+
+            except requests.exceptions.Timeout:
+
+                st.error(
+                    "⏳ Request timed out. "
+                    "Please check whether the Flask API is running correctly."
+                )
+
+
+            # --------------------------------------------------
+            # Other errors
+            # --------------------------------------------------
+
+            except Exception as e:
+
+                st.error(
+                    f"❌ Unexpected error: {e}"
+                )
+
+
+# --------------------------------------------------
+# Instructions
+# --------------------------------------------------
+
+st.markdown("---")
+
+st.markdown()
+    
+### How to Run Locally
+
+**1. Keep these files in the same folder:**
+
+```text
+project_folder/
+│
+├── app.py
+├── streamlit_app.py
+└── model_vgg16_aug_fine_tune.keras
+```
