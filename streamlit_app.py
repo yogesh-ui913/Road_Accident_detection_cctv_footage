@@ -1,7 +1,7 @@
 
 
 import streamlit as st
-import requests
+
 
 
 # --------------------------------------------------
@@ -27,11 +27,7 @@ st.write(
 )
 
 
-# --------------------------------------------------
-# Flask API URL
-# --------------------------------------------------
 
-FLASK_API_URL = "http://127.0.0.1:5000/predict"
 
 
 # --------------------------------------------------
@@ -78,11 +74,7 @@ if uploaded_file is not None:
                     )
                 }
 
-                response = requests.post(
-                    FLASK_API_URL,
-                    files=files,
-                    timeout=60
-                )
+                
 
 
                 # --------------------------------------------------
@@ -156,23 +148,7 @@ if uploaded_file is not None:
                     )
 
 
-            # --------------------------------------------------
-            # Flask connection error
-            # --------------------------------------------------
-
-            except requests.exceptions.ConnectionError:
-
-                st.error(
-                    "❌ Could not connect to Flask API."
-                )
-
-                st.info(
-                    "Please start the Flask API first:"
-                )
-
-                st.code(
-                    "python app.py"
-                )
+           
 
 
             # --------------------------------------------------
