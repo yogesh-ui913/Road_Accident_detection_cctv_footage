@@ -1,7 +1,8 @@
-
-
 import streamlit as st
-
+import tensorflow as tf
+from tensorflow.keras.preprocessing import image
+import numpy as np
+from PIL import Image
 
 
 # --------------------------------------------------
@@ -16,6 +17,28 @@ st.set_page_config(
 
 
 # --------------------------------------------------
+# Load Model
+# --------------------------------------------------
+
+@st.cache_resource
+def load_model():
+    return tf.keras.models.load_model(
+        "model_vgg16_aug_fine_tune.keras"
+    )
+
+
+model = load_model()
+
+
+# --------------------------------------------------
+# Image Size
+# --------------------------------------------------
+
+IMG_WIDTH = 224
+IMG_HEIGHT = 224
+
+
+# --------------------------------------------------
 # Title
 # --------------------------------------------------
 
@@ -25,9 +48,6 @@ st.write(
     "Upload a CCTV image to predict whether it contains "
     "an Accident or Non Accident."
 )
-
-
-
 
 
 # --------------------------------------------------
@@ -46,13 +66,17 @@ uploaded_file = st.file_uploader(
 
 if uploaded_file is not None:
 
-    # Display uploaded image
+    # Open uploaded image
+    img = Image.open(uploaded_file).convert("RGB")
+
+    # Display image
     st.image(
-        uploaded_file,
+        img,
         caption="Uploaded Image",
         use_container_width=True
     )
 
+    # Space
     st.write("")
 
     # Predict button
@@ -62,116 +86,111 @@ if uploaded_file is not None:
 
             try:
 
-                # Reset file position
-                uploaded_file.seek(0)
+                # ------------------------------------------
+                # Resize image
+                # ------------------------------------------
 
-                # Send image to Flask API
-                files = {
-                    "file": (
-                        uploaded_file.name,
-                        uploaded_file.getvalue(),
-                        uploaded_file.type
-                    )
-                }
-
-                
-
-
-                # --------------------------------------------------
-                # Successful response
-                # --------------------------------------------------
-
-                if response.status_code == 200:
-
-                    prediction_data = response.json()
-
-                    predicted_class = prediction_data.get(
-                        "predicted_class",
-                        "Unknown"
-                    )
-
-                    confidence = float(
-                        prediction_data.get(
-                            "confidence",
-                            0
-                        )
-                    )
-
-
-                    st.subheader("Prediction")
-
-
-                    # Accident
-                    if predicted_class.lower() == "accident":
-
-                        st.error(
-                            f"🚨 Accident Detected"
-                        )
-
-                    # Non Accident
-                    elif predicted_class.lower() == "non accident":
-
-                        st.success(
-                            f"✅ Non Accident"
-                        )
-
-                    # Unknown
-                    else:
-
-                        st.warning(
-                            f"Prediction: {predicted_class}"
-                        )
-
-
-                    # Confidence
-                    st.info(
-                        f"Confidence: {confidence:.2%}"
-                    )
-
-
-                # --------------------------------------------------
-                # API Error
-                # --------------------------------------------------
-
-                else:
-
-                    try:
-                        error_message = response.json().get(
-                            "error",
-                            "Unknown API error"
-                        )
-                    except Exception:
-                        error_message = response.text
-
-                    st.error(
-                        f"❌ API Error: {error_message}"
-                    )
-
-
-           
-
-
-            # --------------------------------------------------
-            # Timeout error
-            # --------------------------------------------------
-
-            except requests.exceptions.Timeout:
-
-                st.error(
-                    "⏳ Request timed out. "
-                    "Please check whether the Flask API is running correctly."
+                img_resized = img.resize(
+                    (IMG_WIDTH, IMG_HEIGHT)
                 )
 
 
-            # --------------------------------------------------
-            # Other errors
-            # --------------------------------------------------
+                # ------------------------------------------
+                # Convert image to array
+                # ------------------------------------------
+
+                img_array = image.img_to_array(
+                    img_resized
+                )
+
+
+                # ------------------------------------------
+                # Add batch dimension
+                # ------------------------------------------
+
+                img_array = np.expand_dims(
+                    img_array,
+                    axis=0
+                )
+
+
+                # ------------------------------------------
+                # Normalize image
+                # ------------------------------------------
+
+                img_array = img_array / 255.0
+
+
+                # ------------------------------------------
+                # Prediction
+                # ------------------------------------------
+
+                prediction = model.predict(
+                    img_array,
+                    verbose=0
+                )
+
+
+                probability = float(
+                    prediction[0][0]
+                )
+
+
+                # ------------------------------------------
+                # Class Mapping
+                # ------------------------------------------
+                # 0 = Accident
+                # 1 = Non Accident
+
+                if probability >= 0.5:
+
+                    predicted_class = "Non Accident"
+
+                    confidence = probability
+
+                else:
+
+                    predicted_class = "Accident"
+
+                    confidence = 1 - probability
+
+
+                # ------------------------------------------
+                # Display Result
+                # ------------------------------------------
+
+                st.subheader("Prediction")
+
+
+                if predicted_class == "Accident":
+
+                    st.error(
+                        "🚨 Accident Detected"
+                    )
+
+                else:
+
+                    st.success(
+                        "✅ Non Accident"
+                    )
+
+
+                st.write(
+                    f"**Prediction:** {predicted_class}"
+                )
+
+                st.info(
+                    f"**Confidence:** {confidence:.2%}"
+                )
+
 
             except Exception as e:
 
                 st.error(
-                    f"❌ Unexpected error: {e}"
+                    "❌ Error while processing the image."
                 )
+
+                st.exception(e)
 
 
 # --------------------------------------------------
@@ -180,8 +199,16 @@ if uploaded_file is not None:
 
 st.markdown("---")
 
-st.markdown("---")
-    
-### How to Run Locally
+st.subheader("📌 Instructions")
 
+st.write(
+    "1. Upload a CCTV image."
+)
 
+st.write(
+    "2. Click the 'Detect Accident' button."
+)
+
+st.write(
+    "3. The model will predict Accident or Non Accident."
+)
