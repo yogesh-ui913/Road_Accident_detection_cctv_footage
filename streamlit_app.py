@@ -1,81 +1,75 @@
-
 import streamlit as st
 import requests
 
 
-# --------------------------------------------------
-# Page Configuration
-# --------------------------------------------------
+# ---------------------------------------------------------
+# Page configuration
+# ---------------------------------------------------------
 
 st.set_page_config(
-    page_title="Accident Detection from CCTV Footage",
+    page_title="Road Accident Detection",
     page_icon="🚗",
     layout="centered"
 )
 
 
-# --------------------------------------------------
-# Title
-# --------------------------------------------------
-
-st.title("🚗 Accident Detection from CCTV Footage")
-
-st.write(
-    "Upload a CCTV image to predict whether it contains "
-    "an Accident or Non Accident."
-)
-
-
-# --------------------------------------------------
+# ---------------------------------------------------------
 # Flask API URL
-# --------------------------------------------------
+# ---------------------------------------------------------
 
 FLASK_API_URL = "http://127.0.0.1:5000/predict"
 
 
-# --------------------------------------------------
-# Upload Image
-# --------------------------------------------------
+# ---------------------------------------------------------
+# Title
+# ---------------------------------------------------------
+
+st.title("🚗 Road Accident Detection")
+st.write("Upload an image to detect whether it shows an accident.")
+
+
+# ---------------------------------------------------------
+# Upload image
+# ---------------------------------------------------------
 
 uploaded_file = st.file_uploader(
-    "Choose an image...",
+    "Choose an image",
     type=["jpg", "jpeg", "png"]
 )
 
 
-# --------------------------------------------------
-# Prediction
-# --------------------------------------------------
+# ---------------------------------------------------------
+# Display image
+# ---------------------------------------------------------
 
 if uploaded_file is not None:
 
-    # Display uploaded image
     st.image(
         uploaded_file,
         caption="Uploaded Image",
         use_container_width=True
     )
 
-    st.write("")
+    # -----------------------------------------------------
+    # Prediction button
+    # -----------------------------------------------------
 
-    # Predict button
     if st.button("🔍 Detect Accident"):
 
-        with st.spinner("Analyzing image..."):
+        try:
+            # Get image bytes
+            image_bytes = uploaded_file.getvalue()
 
-            try:
+            # Send image to Flask API
+            files = {
+                "file": (
+                    uploaded_file.name,
+                    image_bytes,
+                    uploaded_file.type
+                )
+            }
 
-                # Reset file position
-                uploaded_file.seek(0)
-
-                # Send image to Flask API
-                files = {
-                    "file": (
-                        uploaded_file.name,
-                        uploaded_file.getvalue(),
-                        uploaded_file.type
-                    )
-                }
+            with st.spinner("Analyzing image..."):
 
                 response = requests.post(
                     FLASK_API_URL,
@@ -83,120 +77,121 @@ if uploaded_file is not None:
                     timeout=60
                 )
 
+            # -------------------------------------------------
+            # Successful response
+            # -------------------------------------------------
 
-                # --------------------------------------------------
-                # Successful response
-                # --------------------------------------------------
+            if response.status_code == 200:
 
-                if response.status_code == 200:
+                result = response.json()
 
-                    prediction_data = response.json()
+                predicted_class = result.get(
+                    "predicted_class",
+                    "Unknown"
+                )
 
-                    predicted_class = prediction_data.get(
-                        "predicted_class",
-                        "Unknown"
-                    )
+                confidence = result.get(
+                    "confidence",
+                    0
+                )
 
-                    confidence = float(
-                        prediction_data.get(
-                            "confidence",
-                            0
-                        )
-                    )
+                # Convert confidence to percentage
+                confidence_percentage = float(confidence) * 100
 
+                # -------------------------------------------------
+                # Display result
+                # -------------------------------------------------
 
-                    st.subheader("Prediction")
+                if predicted_class.lower() == "accident":
 
+                    st.error("🚨 Accident Detected")
 
-                    # Accident
-                    if predicted_class.lower() == "accident":
+                elif predicted_class.lower() in [
+                    "non accident",
+                    "non-accident",
+                    "non_accident"
+                ]:
 
-                        st.error(
-                            f"🚨 Accident Detected"
-                        )
-
-                    # Non Accident
-                    elif predicted_class.lower() == "non accident":
-
-                        st.success(
-                            f"✅ Non Accident"
-                        )
-
-                    # Unknown
-                    else:
-
-                        st.warning(
-                            f"Prediction: {predicted_class}"
-                        )
-
-
-                    # Confidence
-                    st.info(
-                        f"Confidence: {confidence:.2%}"
-                    )
-
-
-                # --------------------------------------------------
-                # API Error
-                # --------------------------------------------------
+                    st.success("✅ No Accident Detected")
 
                 else:
 
-                    try:
-                        error_message = response.json().get(
-                            "error",
-                            "Unknown API error"
-                        )
-                    except Exception:
-                        error_message = response.text
-
-                    st.error(
-                        f"❌ API Error: {error_message}"
+                    st.warning(
+                        f"Prediction: {predicted_class}"
                     )
 
+                st.write(
+                    f"**Prediction:** {predicted_class}"
+                )
 
-            # --------------------------------------------------
-            # Flask connection error
-            # --------------------------------------------------
+                st.write(
+                    f"**Confidence:** "
+                    f"{confidence_percentage:.2f}%"
+                )
 
-            except requests.exceptions.ConnectionError:
+            else:
 
                 st.error(
-                    "❌ Could not connect to Flask API."
+                    f"Flask API Error: "
+                    f"{response.status_code}"
                 )
 
-                st.info(
-                    "Please start the Flask API first:"
-                )
+                try:
+                    st.json(response.json())
+                except Exception:
+                    st.write(response.text)
 
-                st.code(
-                    "python app.py"
-                )
+        except requests.exceptions.ConnectionError:
 
+            st.error(
+                "❌ Could not connect to Flask API."
+            )
 
-            # --------------------------------------------------
-            # Timeout error
-            # --------------------------------------------------
+            st.info(
+                "Please start Flask first using:"
+            )
 
-            except requests.exceptions.Timeout:
+            st.code(
+                "python app.py",
+                language="bash"
+            )
 
-                st.error(
-                    "⏳ Request timed out. "
-                    "Please check whether the Flask API is running correctly."
-                )
+        except requests.exceptions.Timeout:
 
+            st.error(
+                "⏱️ Flask API took too long to respond."
+            )
 
-            # --------------------------------------------------
-            # Other errors
-            # --------------------------------------------------
+        except Exception as e:
 
-            except Exception as e:
-
-                st.error(
-                    f"❌ Unexpected error: {e}"
-                )
-
-
-
+            st.error(
+                f"❌ Unexpected error: {str(e)}"
+            )
 
 
+# ---------------------------------------------------------
+# Instructions
+# ---------------------------------------------------------
+
+st.markdown("---")
+
+st.subheader("How to run the application")
+
+st.write("**Step 1 — Start Flask API:**")
+
+st.code(
+    "python app.py",
+    language="bash"
+)
+
+st.write("**Step 2 — Start Streamlit:**")
+
+st.code(
+    "streamlit run streamlit_app.py",
+    language="bash"
+)
+
+st.info(
+    "Make sure the Flask API is running before clicking "
+    "'Detect Accident'."
+)
