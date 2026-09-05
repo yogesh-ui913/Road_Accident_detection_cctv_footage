@@ -204,7 +204,7 @@ if uploaded_file is not None:
 
 st.markdown("---")
 
-st.markdown()
+st.markdown("---")
     
 ### How to Run Locally
 
