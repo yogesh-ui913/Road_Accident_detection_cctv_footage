@@ -204,12 +204,12 @@ if uploaded_file is not None:
 st.markdown("---")
 
 st.markdown(
-    """
+    
 ### How to Run Locally
 
 **1. Keep these files in the same folder:**
 
-```text
+text
 project_folder/
 │
 ├── app.py
