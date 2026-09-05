@@ -197,14 +197,6 @@ if uploaded_file is not None:
                 )
 
 
-# --------------------------------------------------
-# Instructions
-# --------------------------------------------------
 
-st.markdown("---")
-
-st.markdown()
-    
-### How to Run Locally
 
 
