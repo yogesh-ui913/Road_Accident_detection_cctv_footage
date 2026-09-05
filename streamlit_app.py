@@ -207,11 +207,4 @@ st.markdown(
     
 ### How to Run Locally
 
-**1. Keep these files in the same folder:**
 
-text
-project_folder/
-│
-├── app.py
-├── streamlit_app.py
-└── model_vgg16_aug_fine_tune.keras
