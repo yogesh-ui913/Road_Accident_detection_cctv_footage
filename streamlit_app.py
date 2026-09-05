@@ -1,36 +1,58 @@
+
 import streamlit as st
-import requests
+import tensorflow as tf
+from tensorflow.keras.preprocessing import image
+import numpy as np
+from PIL import Image
 
 
-# ---------------------------------------------------------
+# --------------------------------------------------
 # Page configuration
-# ---------------------------------------------------------
+# --------------------------------------------------
 
 st.set_page_config(
-    page_title="Road Accident Detection",
-    page_icon="🚗",
-    layout="centered"
+    page_title="Accident Detection",
+    page_icon="🚗"
 )
 
 
-# ---------------------------------------------------------
-# Flask API URL
-# ---------------------------------------------------------
+# --------------------------------------------------
+# Load trained VGG16 model
+# --------------------------------------------------
 
-FLASK_API_URL = "http://127.0.0.1:5000/predict"
+@st.cache_resource
+def load_model():
+    return tf.keras.models.load_model(
+        "model_vgg16_aug_fine_tune.keras"
+    )
 
 
-# ---------------------------------------------------------
+model = load_model()
+
+
+# --------------------------------------------------
+# Image size used during training
+# --------------------------------------------------
+
+IMG_HEIGHT = 224
+IMG_WIDTH = 224
+
+
+# --------------------------------------------------
 # Title
-# ---------------------------------------------------------
+# --------------------------------------------------
 
-st.title("🚗 Road Accident Detection")
-st.write("Upload an image to detect whether it shows an accident.")
+st.title("🚗 Accident Detection from CCTV Image")
+
+st.write(
+    "Upload a CCTV image to detect whether it contains "
+    "an Accident or Non Accident."
+)
 
 
-# ---------------------------------------------------------
+# --------------------------------------------------
 # Upload image
-# ---------------------------------------------------------
+# --------------------------------------------------
 
 uploaded_file = st.file_uploader(
     "Choose an image",
@@ -38,160 +60,94 @@ uploaded_file = st.file_uploader(
 )
 
 
-# ---------------------------------------------------------
-# Display image
-# ---------------------------------------------------------
+# --------------------------------------------------
+# Prediction
+# --------------------------------------------------
 
 if uploaded_file is not None:
 
+    # Open image
+    img = Image.open(uploaded_file).convert("RGB")
+
+    # Display image
     st.image(
-        uploaded_file,
+        img,
         caption="Uploaded Image",
         use_container_width=True
     )
 
-    # -----------------------------------------------------
-    # Prediction button
-    # -----------------------------------------------------
+    # --------------------------------------------------
+    # Preprocessing
+    # Same as notebook
+    # --------------------------------------------------
+
+    img = img.resize((IMG_WIDTH, IMG_HEIGHT))
+
+    img_array = image.img_to_array(img)
+
+    # Add batch dimension
+    img_array = np.expand_dims(img_array, axis=0)
+
+    # Training used rescale=1./255
+    img_array = img_array / 255.0
+
+    # --------------------------------------------------
+    # Prediction
+    # --------------------------------------------------
 
     if st.button("🔍 Detect Accident"):
 
-        try:
-            # Get image bytes
-            image_bytes = uploaded_file.getvalue()
+        with st.spinner("Analyzing image..."):
 
-            # Send image to Flask API
-            files = {
-                "file": (
-                    uploaded_file.name,
-                    image_bytes,
-                    uploaded_file.type
-                )
-            }
-
-            with st.spinner("Analyzing image..."):
-
-                response = requests.post(
-                    FLASK_API_URL,
-                    files=files,
-                    timeout=60
-                )
-
-            # -------------------------------------------------
-            # Successful response
-            # -------------------------------------------------
-
-            if response.status_code == 200:
-
-                result = response.json()
-
-                predicted_class = result.get(
-                    "predicted_class",
-                    "Unknown"
-                )
-
-                confidence = result.get(
-                    "confidence",
-                    0
-                )
-
-                # Convert confidence to percentage
-                confidence_percentage = float(confidence) * 100
-
-                # -------------------------------------------------
-                # Display result
-                # -------------------------------------------------
-
-                if predicted_class.lower() == "accident":
-
-                    st.error("🚨 Accident Detected")
-
-                elif predicted_class.lower() in [
-                    "non accident",
-                    "non-accident",
-                    "non_accident"
-                ]:
-
-                    st.success("✅ No Accident Detected")
-
-                else:
-
-                    st.warning(
-                        f"Prediction: {predicted_class}"
-                    )
-
-                st.write(
-                    f"**Prediction:** {predicted_class}"
-                )
-
-                st.write(
-                    f"**Confidence:** "
-                    f"{confidence_percentage:.2f}%"
-                )
-
-            else:
-
-                st.error(
-                    f"Flask API Error: "
-                    f"{response.status_code}"
-                )
-
-                try:
-                    st.json(response.json())
-                except Exception:
-                    st.write(response.text)
-
-        except requests.exceptions.ConnectionError:
-
-            st.error(
-                "❌ Could not connect to Flask API."
+            prediction = model.predict(
+                img_array,
+                verbose=0
             )
 
-            st.info(
-                "Please start Flask first using:"
-            )
+        probability = float(prediction[0][0])
 
-            st.code(
-                "python app.py",
-                language="bash"
-            )
+        # --------------------------------------------------
+        # IMPORTANT:
+        #
+        # 0 = Accident
+        # 1 = Non Accident
+        #
+        # probability >= 0.5 → Non Accident
+        # probability < 0.5  → Accident
+        # --------------------------------------------------
 
-        except requests.exceptions.Timeout:
+        if probability >= 0.5:
 
-            st.error(
-                "⏱️ Flask API took too long to respond."
-            )
+            predicted_class = "Non Accident"
+            confidence = probability
 
-        except Exception as e:
+        else:
 
-            st.error(
-                f"❌ Unexpected error: {str(e)}"
-            )
+            predicted_class = "Accident"
+            confidence = 1 - probability
 
+        # --------------------------------------------------
+        # Display result
+        # --------------------------------------------------
 
-# ---------------------------------------------------------
-# Instructions
-# ---------------------------------------------------------
+        st.subheader("Prediction")
 
-st.markdown("---")
+        if predicted_class == "Accident":
 
-st.subheader("How to run the application")
+            st.error("🚨 Accident Detected")
 
-st.write("**Step 1 — Start Flask API:**")
+        else:
 
-st.code(
-    "python app.py",
-    language="bash"
-)
+            st.success("✅ Non Accident")
 
-st.write("**Step 2 — Start Streamlit:**")
+        st.write(
+            f"**Prediction:** {predicted_class}"
+        )
 
-st.code(
-    "streamlit run streamlit_app.py",
-    language="bash"
-)
+        st.write(
+            f"**Confidence:** {confidence:.2%}"
+        )
 
-st.info(
-    "Make sure the Flask API is running before clicking "
-    "'Detect Accident'."
-)
+        st.write(
+            f"**Raw model output:** {probability:.4f}"
+        )
